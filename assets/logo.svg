@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <rect x="14" y="14" width="100" height="100" rx="22" fill="#0F172A" stroke="#475569" stroke-width="3"/>
+  <!-- Row 1: Two multi-pool quota bars -->
+  <rect x="26" y="34" width="36" height="14" rx="4" fill="#1E293B"/>
+  <rect x="26" y="34" width="30" height="14" rx="4" fill="#22C55E"/>
+  <rect x="66" y="34" width="36" height="14" rx="4" fill="#1E293B"/>
+  <rect x="66" y="34" width="24" height="14" rx="4" fill="#16A34A"/>
+  <!-- Row 2: Context threshold bar -->
+  <rect x="26" y="57" width="76" height="14" rx="4" fill="#1E293B"/>
+  <rect x="26" y="57" width="56" height="14" rx="4" fill="#EAB308"/>
+  <!-- Row 3: Active subagents & background tasks -->
+  <circle cx="32" cy="87" r="5" fill="#38BDF8"/>
+  <rect x="42" y="83" width="22" height="8" rx="4" fill="#334155"/>
+  <circle cx="74" cy="87" r="5" fill="#34D399"/>
+  <rect x="84" y="83" width="18" height="8" rx="4" fill="#334155"/>
+</svg>

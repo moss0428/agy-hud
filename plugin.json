@@ -1,0 +1,25 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "agy-hud",
+  "displayName": "Agy HUD",
+  "version": "1.7.0",
+  "description": "CLI status HUD with cross-session quota sync, TrueColor bars, active model & effort indicator, and full-height transparent pixel-art Google wordmark.",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "Preview and configure the Agy HUD status line",
+    "Switch Agy HUD between stacked and replace mode",
+    "Troubleshoot why my Agy HUD status line is not showing"
+  ],
+  "author": {
+    "name": "moss"
+  },
+  "license": "MIT",
+  "keywords": [
+    "hud",
+    "statusline",
+    "quota",
+    "context",
+    "subagents",
+    "tasks"
+  ]
+}
