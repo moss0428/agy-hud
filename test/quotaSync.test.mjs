@@ -237,6 +237,8 @@ test('statusline.mjs CLI syncs fresher quota between two separate processes', ()
   withTempCache((cachePath) => {
     const env = {
       ...process.env,
+      AGY_HUD_COMPACT_LIMIT: '',
+      AGY_CLI_AUTO_COMPACT_OVERRIDE: '',
       NO_COLOR: '',
       AGY_HUD_QUOTA_CACHE_PATH: cachePath,
       AGY_HUD_QUOTA_SYNC: '1',
@@ -264,6 +266,6 @@ test('statusline.mjs CLI syncs fresher quota between two separate processes', ()
 
     const plainB = stripAnsi(outB);
     assert.ok(plainB.includes('82%'), `Session B should display synced 82%, got:\n${plainB}`);
-    assert.ok(plainB.includes('5%'), 'Session B should keep its own 5% context usage');
+    assert.ok(plainB.includes('9.8%'), 'Session B should keep its own context usage (50k of the 512k ceiling)');
   });
 });

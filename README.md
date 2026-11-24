@@ -9,8 +9,9 @@
    - 显示剩余额度百分比，余量 `< 30%` 琥珀黄、`< 10%` 绯红。
    - 内置**多窗口额度自动同步**（按登录邮箱隔离，同一重置周期内自动取各窗口最新消耗后的余量，跨周期自动失效），多个 `agy` 窗口无需手动 `/usage` 也能保持额度一致。
 2. **第 2 行｜当前会话上下文占比 + 活跃子代理数 + 进行中后台任务数 + 模型与思考强度 + 彩色像素 `Google`**：
-   - 左侧使用动态象限仪表图标（`○ ◔ ◑ ◕ ●`）+ 亚格平滑进度条展示 `context_window.used_percentage` 与精简 token 用量（如 `188k/1M`，可通过 `AGY_HUD_SHOW_TOKENS=0` 隐藏）。
-   - 上下文颜色阈值：`< 70%` 翡翠绿、`>= 70%` 琥珀黄、`>= 90%` 绯红。
+   - 左侧使用动态象限仪表图标（`○ ◔ ◑ ◕ ●`）+ 亚格平滑进度条展示上下文占用与精简 token 用量（如 `188k/512k`，可通过 `AGY_HUD_SHOW_TOKENS=0` 隐藏）。
+   - 进度条以**自动压缩上限**而非模型原生窗口（如 `1M`）为 100% 基准，因为 `agy` 会在远低于原生窗口时自动压缩。上限按以下优先级确定：`AGY_HUD_COMPACT_LIMIT=off`（回退原生窗口）→ payload 中的 `context_window.max_context_tokens` 等字段 → `AGY_HUD_COMPACT_LIMIT` → `AGY_CLI_AUTO_COMPACT_OVERRIDE` → 原生窗口大于 `512k` 的模型默认按 `512k`。
+   - 上下文颜色阈值（相对压缩上限）：`< 70%` 翡翠绿、`>= 70%` 琥珀黄、`>= 90%` 绯红。
    - 中间同屏显示活跃子代理数（`◇` / `❖ 子代理`）与进行中后台任务数（`▹` / `▸ 后台任务`）；为 `0` 时保持低饱和度灰蓝，大于 `0` 时切换为高亮胶囊徽章。
    - 后台任务后展示当前会话使用的**模型名称与思考强度**（如 `✦ Gemini 4 Neon · High`、`◈ Claude Opus 4.6 · Max`），自动识别模型系列与强度分级着色（可通过 `AGY_HUD_SHOW_MODEL=0` 隐藏）。
    - 右侧占满整体 **3 行高度**展示**全透明背景 `27×6` TrueColor 彩色像素 `Google`**：严格采用 Google 品牌四原色与终端默认透明背景（`\x1b[49m`），不留黑底；窄终端或无间隙模式下自动回退为精简单行彩色 `Google`（可通过 `AGY_HUD_BRAND=mini` 强制单行或 `off` 关闭）。
@@ -50,6 +51,7 @@ node ~/.gemini/config/plugins/agy-hud/scripts/install.mjs --replace
 - `NO_COLOR=1`：关闭 ANSI 颜色，降级为纯文本 ASCII 进度条与纯文本 `Google`。
 - `AGY_HUD_SHOW_TOKENS=0`：隐藏第 2 行进度条右侧的 token 用量摘要。
 - `AGY_HUD_SHOW_MODEL=0`：隐藏第 2 行后台任务后的当前模型与强度显示。
+- `AGY_HUD_COMPACT_LIMIT=512k`：自定义上下文进度条 100% 对应的自动压缩上限，支持 token 数（`700000`）、`K`/`M` 写法（`800K`、`0.5M`）、百分比（`80%`）；设为 `off` 则按模型原生窗口计算。未设置时会自动读取 `AGY_CLI_AUTO_COMPACT_OVERRIDE`，仍未设置则对原生窗口大于 `512k` 的模型默认取 `512k`。
 - `AGY_HUD_BAR_WIDTH_QUOTA=8`：自定义额度进度条宽度（默认 `8`）。
 - `AGY_HUD_BAR_WIDTH_CONTEXT=16`：自定义上下文进度条宽度（默认 `16`）。
 - `AGY_HUD_BRAND=pixel`：控制右侧品牌标志，支持 `pixel`（占满 3 行的彩色像素 `Google`，默认）、`mini`（精简单行彩色 `Google`）或 `off`（关闭）。

@@ -47,6 +47,7 @@ Wrap the `statusLine.command` or export in your shell profile to tune the HUD:
 - `NO_COLOR=1`: Disable ANSI colors and render plain ASCII bars (`[####.... 85%]`).
 - `AGY_HUD_SHOW_TOKENS=0`: Hide the compact `used/total` token summary on Line 2.
 - `AGY_HUD_SHOW_MODEL=0`: Hide the active model name and reasoning effort indicator on Line 2.
+- `AGY_HUD_COMPACT_LIMIT=512k`: Auto-compaction ceiling used as 100% of the context bar (token count, `800K`/`0.5M`, `80%`, or `off` for the raw model window). Falls back to `AGY_CLI_AUTO_COMPACT_OVERRIDE`, then to `512k` for models whose window exceeds it.
 - `AGY_HUD_BAR_WIDTH_QUOTA=8`: Set quota progress bar cell width (minimum 6 on narrow terminals).
 - `AGY_HUD_BAR_WIDTH_CONTEXT=16`: Set context progress bar cell width.
 - `AGY_HUD_BRAND=pixel`: Control the right-side Google wordmark (`pixel` for 3-row transparent pixel-art `Google`, `mini` for compact 1-row colored `Google`, or `off`).

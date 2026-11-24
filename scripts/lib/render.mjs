@@ -29,9 +29,18 @@ function padRightWidth(text, targetWidth) {
   return `${text}${' '.repeat(targetWidth - w)}`;
 }
 
-function buildBottomLine(payload, { barWidth, showTokens, model, brand, noColor }) {
+function buildBottomLine(
+  payload,
+  { barWidth, showTokens, model, brand, noColor, env, compactLimit }
+) {
   const sep = style(' │ ', fgRgb(65, 72, 104), noColor);
-  const context = renderContextSegment(payload, { barWidth, showTokens, noColor });
+  const context = renderContextSegment(payload, {
+    barWidth,
+    showTokens,
+    noColor,
+    env,
+    compactLimit,
+  });
   const activity = renderActivitySegment(payload, { noColor });
   const parts = [context, activity];
   if (model) {
@@ -59,10 +68,18 @@ function getWidthVariants(barWidth, showTokens) {
 
 function renderResponsiveBottomLine(
   payload,
-  { barWidth, showTokens, model, brand, terminalWidth, noColor }
+  { barWidth, showTokens, model, brand, terminalWidth, noColor, env, compactLimit }
 ) {
   if (terminalWidth <= 0) {
-    return buildBottomLine(payload, { barWidth, showTokens, model, brand, noColor });
+    return buildBottomLine(payload, {
+      barWidth,
+      showTokens,
+      model,
+      brand,
+      noColor,
+      env,
+      compactLimit,
+    });
   }
 
   const variants = getWidthVariants(barWidth, showTokens);
@@ -74,6 +91,8 @@ function renderResponsiveBottomLine(
         model,
         brand,
         noColor,
+        env,
+        compactLimit,
       });
       if (displayWidth(candidate) <= terminalWidth) {
         return candidate;
@@ -88,6 +107,8 @@ function renderResponsiveBottomLine(
         model,
         brand: null,
         noColor,
+        env,
+        compactLimit,
       });
       if (displayWidth(candidate) <= terminalWidth) {
         return candidate;
@@ -102,6 +123,8 @@ function renderResponsiveBottomLine(
         model: null,
         brand,
         noColor,
+        env,
+        compactLimit,
       });
       if (displayWidth(candidate) <= terminalWidth) {
         return candidate;
@@ -116,6 +139,8 @@ function renderResponsiveBottomLine(
       model: null,
       brand: null,
       noColor,
+      env,
+      compactLimit,
     });
     if (displayWidth(fallback) <= terminalWidth) {
       return fallback;
@@ -137,6 +162,8 @@ function tryBuildPixelLayout(
     terminalWidth,
     noColor,
     nowMs,
+    env,
+    compactLimit,
   }
 ) {
   const sep = style(' │ ', fgRgb(65, 72, 104), noColor);
@@ -163,6 +190,8 @@ function tryBuildPixelLayout(
         model,
         brand: null,
         noColor,
+        env,
+        compactLimit,
       });
       const w2 = displayWidth(candidateLine2);
       const leftWidth = Math.max(w1, w2);
@@ -234,6 +263,7 @@ export function renderHud(payload, options = {}) {
         ? Math.floor(safePayload.terminal_width)
         : 0;
 
+  const compactLimit = options.compactLimit;
   const nowMs = options.nowMs ?? Date.now();
   const model = showModel ? renderModelSegment(safePayload, { noColor }) : null;
 
@@ -250,6 +280,8 @@ export function renderHud(payload, options = {}) {
         terminalWidth,
         noColor,
         nowMs,
+        env,
+        compactLimit,
       });
       if (pixelLayout) {
         return pixelLayout;
@@ -273,6 +305,8 @@ export function renderHud(payload, options = {}) {
     brand: miniBrand,
     terminalWidth,
     noColor,
+    env,
+    compactLimit,
   });
 
   if (lineGap > 0) {

@@ -2,47 +2,171 @@ import { BOLD, displayWidth, fgRgb, style, truncateToWidth } from './ansi.mjs';
 import { clampPercent, renderProgressBar } from './bar.mjs';
 
 /**
- * Parse context_window telemetry into percentage and token counts.
+ * Fallback auto-compaction ceiling (tokens) for large-window models when neither
+ * the payload nor an environment override states the effective limit.
  */
-export function parseContextWindow(payload) {
-  const cw = payload?.context_window;
-  const windowSize =
-    typeof cw?.context_window_size === 'number' &&
-    Number.isFinite(cw.context_window_size) &&
-    cw.context_window_size > 0
-      ? cw.context_window_size
-      : 0;
+export const DEFAULT_COMPACT_LIMIT = 512_000;
 
-  let usedPct = 0;
-  if (typeof cw?.used_percentage === 'number' && Number.isFinite(cw.used_percentage)) {
-    usedPct = clampPercent(cw.used_percentage);
-  } else if (
-    typeof cw?.remaining_percentage === 'number' &&
-    Number.isFinite(cw.remaining_percentage)
-  ) {
-    usedPct = clampPercent(100 - cw.remaining_percentage);
-  } else if (
-    windowSize > 0 &&
-    (typeof cw?.total_input_tokens === 'number' ||
-      typeof cw?.total_output_tokens === 'number')
-  ) {
-    const input =
-      typeof cw.total_input_tokens === 'number' && Number.isFinite(cw.total_input_tokens)
-        ? cw.total_input_tokens
-        : 0;
-    const output =
-      typeof cw.total_output_tokens === 'number' && Number.isFinite(cw.total_output_tokens)
-        ? cw.total_output_tokens
-        : 0;
-    usedPct = clampPercent(((input + output) / windowSize) * 100);
+const DISABLE_COMPACT_LIMIT_RE = /^(0|off|false|none|raw|model)$/i;
+const PAYLOAD_LIMIT_KEYS = [
+  'max_context_tokens',
+  'auto_compact_limit',
+  'compaction_threshold',
+  'auto_compact_threshold',
+];
+
+function finiteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Parse a compaction limit such as `700000`, `800K`, `0.5M`, or `80%`.
+ * Percentages are relative to `windowSize`. Returns null when unusable.
+ */
+export function parseCompactLimitValue(rawValue, windowSize = 0) {
+  if (typeof rawValue === 'number') {
+    return Number.isFinite(rawValue) && rawValue > 0 ? Math.round(rawValue) : null;
+  }
+  if (typeof rawValue !== 'string') {
+    return null;
+  }
+  const text = rawValue.trim();
+  if (!text) {
+    return null;
   }
 
-  const usedTokens = windowSize > 0 ? Math.round((usedPct / 100) * windowSize) : 0;
+  let match = text.match(/^(\d+(?:\.\d+)?)\s*%$/);
+  if (match) {
+    const pct = Number(match[1]);
+    if (!(pct > 0) || !(windowSize > 0)) {
+      return null;
+    }
+    const tokens = Math.round((pct / 100) * windowSize);
+    return tokens > 0 ? tokens : null;
+  }
+
+  match = text.match(/^(\d+(?:\.\d+)?)\s*([km])$/i);
+  if (match) {
+    const mult = match[2].toLowerCase() === 'm' ? 1_000_000 : 1_000;
+    const tokens = Math.round(Number(match[1]) * mult);
+    return tokens > 0 ? tokens : null;
+  }
+
+  match = text.match(/^(\d+(?:\.\d+)?)$/);
+  if (match) {
+    const tokens = Math.round(Number(match[1]));
+    return tokens > 0 ? tokens : null;
+  }
+
+  return null;
+}
+
+function capToWindow(limit, windowSize) {
+  return windowSize > 0 ? Math.min(limit, windowSize) : limit;
+}
+
+function resolveEffectiveLimit(
+  cw,
+  windowSize,
+  { env = process.env, compactLimit, defaultCompactLimit = DEFAULT_COMPACT_LIMIT } = {}
+) {
+  const hudRaw = compactLimit !== undefined ? compactLimit : env?.AGY_HUD_COMPACT_LIMIT;
+
+  if (
+    hudRaw === 0 ||
+    hudRaw === false ||
+    (typeof hudRaw === 'string' && DISABLE_COMPACT_LIMIT_RE.test(hudRaw.trim()))
+  ) {
+    return { effectiveLimit: windowSize, limitSource: windowSize > 0 ? 'model' : 'none' };
+  }
+
+  for (const key of PAYLOAD_LIMIT_KEYS) {
+    const val = finiteNumber(cw?.[key]);
+    if (val !== null && val > 0) {
+      return {
+        effectiveLimit: capToWindow(Math.round(val), windowSize),
+        limitSource: 'payload',
+      };
+    }
+  }
+
+  const parsedHud = parseCompactLimitValue(hudRaw, windowSize);
+  if (parsedHud !== null) {
+    return { effectiveLimit: capToWindow(parsedHud, windowSize), limitSource: 'hud_env' };
+  }
+
+  const parsedCli = parseCompactLimitValue(env?.AGY_CLI_AUTO_COMPACT_OVERRIDE, windowSize);
+  if (parsedCli !== null) {
+    return { effectiveLimit: capToWindow(parsedCli, windowSize), limitSource: 'cli_env' };
+  }
+
+  if (windowSize <= 0) {
+    return { effectiveLimit: 0, limitSource: 'none' };
+  }
+  if (defaultCompactLimit > 0 && windowSize > defaultCompactLimit) {
+    return { effectiveLimit: defaultCompactLimit, limitSource: 'default' };
+  }
+  return { effectiveLimit: windowSize, limitSource: 'model' };
+}
+
+/**
+ * Parse context_window telemetry into percentage and token counts, measured
+ * against the effective auto-compaction ceiling rather than the raw model window.
+ */
+export function parseContextWindow(payload, options = {}) {
+  const cw = payload?.context_window;
+  const windowSize = (() => {
+    const size = finiteNumber(cw?.context_window_size);
+    return size !== null && size > 0 ? size : 0;
+  })();
+
+  let rawUsedPct = 0;
+  let usedTokens = 0;
+
+  const directTokens = finiteNumber(cw?.estimated_tokens_used) ?? finiteNumber(cw?.used_tokens);
+  const usedPctField = finiteNumber(cw?.used_percentage);
+  const remainingPctField = finiteNumber(cw?.remaining_percentage);
+
+  if (directTokens !== null && directTokens >= 0) {
+    usedTokens = Math.round(directTokens);
+    if (usedPctField !== null) {
+      rawUsedPct = clampPercent(usedPctField);
+    } else if (remainingPctField !== null) {
+      rawUsedPct = clampPercent(100 - remainingPctField);
+    } else if (windowSize > 0) {
+      rawUsedPct = clampPercent((usedTokens / windowSize) * 100);
+    }
+  } else if (usedPctField !== null) {
+    rawUsedPct = clampPercent(usedPctField);
+    usedTokens = windowSize > 0 ? Math.round((rawUsedPct / 100) * windowSize) : 0;
+  } else if (remainingPctField !== null) {
+    rawUsedPct = clampPercent(100 - remainingPctField);
+    usedTokens = windowSize > 0 ? Math.round((rawUsedPct / 100) * windowSize) : 0;
+  } else if (
+    windowSize > 0 &&
+    (finiteNumber(cw?.total_input_tokens) !== null ||
+      finiteNumber(cw?.total_output_tokens) !== null)
+  ) {
+    const input = finiteNumber(cw?.total_input_tokens) ?? 0;
+    const output = finiteNumber(cw?.total_output_tokens) ?? 0;
+    usedTokens = Math.max(0, Math.round(input + output));
+    rawUsedPct = clampPercent((usedTokens / windowSize) * 100);
+  }
+
+  const { effectiveLimit, limitSource } = resolveEffectiveLimit(cw, windowSize, options);
+
+  const usedPct =
+    effectiveLimit > 0 && effectiveLimit !== windowSize
+      ? clampPercent((usedTokens / effectiveLimit) * 100)
+      : rawUsedPct;
 
   return {
     usedPct,
+    rawUsedPct,
     windowSize,
+    effectiveLimit,
     usedTokens,
+    limitSource,
   };
 }
 
@@ -114,9 +238,20 @@ export function formatTokens(tokens) {
  */
 export function renderContextSegment(
   payload,
-  { barWidth = 16, showTokens = true, noColor = false } = {}
+  {
+    barWidth = 16,
+    showTokens = true,
+    noColor = false,
+    env = process.env,
+    compactLimit,
+    defaultCompactLimit,
+  } = {}
 ) {
-  const { usedPct, windowSize, usedTokens } = parseContextWindow(payload);
+  const { usedPct, effectiveLimit, usedTokens } = parseContextWindow(payload, {
+    env,
+    compactLimit,
+    defaultCompactLimit,
+  });
   const tone = contextTone(usedPct);
   const icon = contextIcon(usedPct);
 
@@ -145,8 +280,8 @@ export function renderContextSegment(
   });
 
   const base = `${iconStyled} ${labelStyled} ${bar}`;
-  if (showTokens && windowSize > 0) {
-    const tokenSummary = `${formatTokens(usedTokens)}/${formatTokens(windowSize)}`;
+  if (showTokens && effectiveLimit > 0) {
+    const tokenSummary = `${formatTokens(usedTokens)}/${formatTokens(effectiveLimit)}`;
     return `${base} ${style(tokenSummary, fgRgb(137, 148, 179), noColor)}`;
   }
   return base;
@@ -157,7 +292,15 @@ export function renderContextSegment(
  */
 export function renderContextLine(
   payload,
-  { barWidth = 16, showTokens = true, terminalWidth = 0, noColor = false } = {}
+  {
+    barWidth = 16,
+    showTokens = true,
+    terminalWidth = 0,
+    noColor = false,
+    env = process.env,
+    compactLimit,
+    defaultCompactLimit,
+  } = {}
 ) {
   const effectiveWidth =
     terminalWidth > 0 && terminalWidth < 40 ? Math.min(barWidth, 12) : barWidth;
@@ -166,6 +309,9 @@ export function renderContextLine(
     barWidth: effectiveWidth,
     showTokens,
     noColor,
+    env,
+    compactLimit,
+    defaultCompactLimit,
   });
 
   if (terminalWidth <= 0 || displayWidth(withTokens) <= terminalWidth) {
@@ -176,6 +322,9 @@ export function renderContextLine(
     barWidth: effectiveWidth,
     showTokens: false,
     noColor,
+    env,
+    compactLimit,
+    defaultCompactLimit,
   });
   if (displayWidth(withoutTokens) <= terminalWidth) {
     return withoutTokens;

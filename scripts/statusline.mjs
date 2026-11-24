@@ -49,6 +49,8 @@ function printHelp() {
       '  NO_COLOR=1                    Disable ANSI colors and render ASCII bars',
       '  AGY_HUD_SHOW_TOKENS=0         Hide token counts on Line 2',
       '  AGY_HUD_SHOW_MODEL=0          Hide active model and reasoning effort on Line 2',
+      '  AGY_HUD_COMPACT_LIMIT=512k    Auto-compaction ceiling used as 100% of the context bar: token count, 800K / 0.5M, 80%, or off for the raw model window',
+      '                                (default 512k for larger models; also reads context_window.max_context_tokens and AGY_CLI_AUTO_COMPACT_OVERRIDE)',
       '  AGY_HUD_BAR_WIDTH_QUOTA=8     Width of each quota bar (default: 8)',
       '  AGY_HUD_BAR_WIDTH_CONTEXT=16  Width of the context bar (default: 16)',
       '  AGY_HUD_BRAND=pixel           Right-side Google wordmark: pixel (3-row), mini (1-row), or off (default: pixel)',
@@ -65,14 +67,14 @@ function printDemo() {
   const samples = [
     {
       label: 'Normal (<70%) + Active Workers',
-      pct: 42,
+      pct: 20.5,
       model: { id: 'Gemini 4 Argon (Medium)', display_name: 'Gemini 4 Argon (Medium)', effort: 'medium' },
       subagents: [{ name: 'scout', role: 'research', status: 'running' }],
       task_count: 1,
     },
     {
       label: 'Warning (>=70%) + Active Workers',
-      pct: 75,
+      pct: 36.6,
       model: { id: 'Claude Opus 4.6', display_name: 'Claude Opus 4.6', effort: 'max' },
       subagents: [
         { name: 'scout', status: 'running' },
@@ -82,7 +84,7 @@ function printDemo() {
     },
     {
       label: 'Critical (>=90%) + Low Quota',
-      pct: 94,
+      pct: 45.9,
       lowQuota: true,
       model: { id: 'Gemini 4 Flash (Low)', display_name: 'Gemini 4 Flash (Low)', effort: 'low' },
       subagents: [{ name: 'worker', status: 'running' }],
@@ -116,7 +118,7 @@ function printDemo() {
       task_count: sample.task_count,
     };
     process.stdout.write(`-- ${sample.label} --\n`);
-    process.stdout.write(`${renderHud(samplePayload)}\n\n`);
+    process.stdout.write(`${renderHud(samplePayload, { compactLimit: 512_000 })}\n\n`);
   }
 }
 

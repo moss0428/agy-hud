@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { displayWidth, stripAnsi } from '../scripts/lib/ansi.mjs';
 import { renderHud } from '../scripts/lib/render.mjs';
 
+delete process.env.AGY_HUD_COMPACT_LIMIT;
+delete process.env.AGY_CLI_AUTO_COMPACT_OVERRIDE;
+
 const SCRIPT_PATH = fileURLToPath(
   new URL('../scripts/statusline.mjs', import.meta.url)
 );
@@ -24,7 +27,7 @@ const SAMPLE_PAYLOAD = {
   },
   context_window: {
     context_window_size: 1000000,
-    used_percentage: 72,
+    used_percentage: 36.864,
   },
   subagents: [{ name: 'research', status: 'running' }],
   task_count: 2,
@@ -47,7 +50,7 @@ test('renderHud renders full-height 3-row transparent pixel-art Google alongside
   assert.ok(lines[2].includes('48;2;201;138;30'), '72% context should be yellow TrueColor');
   assert.match(
     plain2,
-    /^◕ 上下文 .*72%.* 720k\/1M │ ❖ 子代理  1  · ▸ 后台任务  2  │ ✦ Gemini 4 Argon · High\s*│ .{27}$/
+    /^◕ 上下文 .*72%.* 369k\/512k │ ❖ 子代理  1  · ▸ 后台任务  2  │ ✦ Gemini 4 Argon · High\s*│ .{27}$/
   );
 
   // Column dividers must align across all 3 rows
@@ -131,6 +134,25 @@ test('renderHud gracefully cascades down at medium (100 cols) and narrow (48 col
   assert.ok(!noColorOut.includes('\x1b['), 'NO_COLOR must strip all ANSI escapes');
 });
 
+test('renderHud scales the context bar to the effective compaction ceiling', () => {
+  const plainOf = (options) => stripAnsi(renderHud(SAMPLE_PAYLOAD, { nowMs: 0, ...options }));
+
+  const cli = plainOf({ env: { AGY_CLI_AUTO_COMPACT_OVERRIDE: '800K' } });
+  assert.ok(cli.includes('369k/800k'), cli);
+  assert.ok(cli.includes('46.1%'), cli);
+
+  const hud = renderHud(SAMPLE_PAYLOAD, { nowMs: 0, env: { AGY_HUD_COMPACT_LIMIT: '256k' } });
+  assert.ok(stripAnsi(hud).includes('369k/256k'));
+  assert.ok(hud.includes('48;2;199;68;84'), '100% of a 256k ceiling should be red');
+
+  const raw = plainOf({ env: { AGY_HUD_COMPACT_LIMIT: 'off' } });
+  assert.ok(raw.includes('369k/1M'), raw);
+  assert.ok(raw.includes('36.9%'), raw);
+
+  const viaOption = plainOf({ env: {}, compactLimit: '400k' });
+  assert.ok(viaOption.includes('369k/400k'), viaOption);
+});
+
 test('statusline.mjs CLI handles valid JSON, empty stdin, invalid JSON, and --demo', () => {
   const payload = JSON.stringify({
     model: { display_name: 'Gemini 4 Neon (High)', effort: 'high' },
@@ -170,6 +192,15 @@ test('statusline.mjs CLI handles valid JSON, empty stdin, invalid JSON, and --de
     encoding: 'utf8',
   });
   assert.equal(outInvalid.trimEnd().split('\n').length, 3);
+
+  const outOverride = execFileSync(process.execPath, [SCRIPT_PATH], {
+    input: JSON.stringify({
+      context_window: { context_window_size: 1000000, used_percentage: 40 },
+    }),
+    encoding: 'utf8',
+    env: { ...process.env, AGY_CLI_AUTO_COMPACT_OVERRIDE: '800K', AGY_HUD_QUOTA_SYNC: '0' },
+  });
+  assert.ok(stripAnsi(outOverride).includes('400k/800k'));
 
   const outDemo = execFileSync(process.execPath, [SCRIPT_PATH, '--demo'], {
     encoding: 'utf8',
